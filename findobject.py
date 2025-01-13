@@ -24,7 +24,7 @@ robot.connect()
 robotvision = elib.robotVision(robot)
 
 def checkforobjs():
-    print("Checking for object in camera")
+    print("Checking for object in camera image")
     objdet = 0
     print("Getting Image")
     img = robot.captureimg()

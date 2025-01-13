@@ -671,7 +671,7 @@ class robotVision(ElegooPlatform):
 
                     # get the class name
                     class_name = classes_names[cls]
-                    print("Found object ",class_name, " with confidence ", box.conf[0])
+                    print("Found object ",class_name, " with confidence % ", box.conf[0])
                     
                     # get the respective colour
                     colour = self.getColours(cls)
