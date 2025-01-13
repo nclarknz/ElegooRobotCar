@@ -3,11 +3,11 @@ import time
 import lib.elegoolib as elib
 
 ## Script Variables
-global objdetect,imgcap,objsdetect_list,img
+global objdetect,imgcap,objsdetect_list,img,robotlinedup
 objsdetect_list = 0
 objdetect = 0
 obj_to_detect = "sports ball"  # Change to the class name of the object you wish to detect
-obj_to_detect = "bottle"
+# obj_to_detect = "bottle"
 imgcap,objsdetect_list = None,None
 img = None
 defspeed = 150
@@ -25,6 +25,7 @@ robot.ip = "192.168.4.1"
 robot.port = 100
 robot.connect()
 robotvision = elib.robotVision()
+robotvision.yolopoints_file = 'yolov8m-worldv2.pt'
 
 def checkforobjs():
     print("Checking for object in camera")
@@ -92,8 +93,6 @@ def findobjects():
 
 # Find the objects in the camera (i.e. check for object, if none found then turn left and check again. Then repeat until object found)
 findobjects()
-# Now line up the robot with the object. S the center of the object is roughly in the center of the camera view
-# robotlinedup = lineup_robot(objsdetect_list)
 
 foundobject = False
 while foundobject == False:

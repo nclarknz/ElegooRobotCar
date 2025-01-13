@@ -370,8 +370,6 @@ class ElegooPlatform:
         self._car.close()
         self.close()
 
-
-
 class robotcar(ElegooPlatform):
     def __init__(self):
         super().__init__()
@@ -462,18 +460,16 @@ class robottank(ElegooPlatform):
  
         return self._cmd(do='rotate',what='camera',at=direct)
 
-
 class robotVision():
     def __init__(self):
        
         self._origheight = 0
         self._origwidth = 0
         self.objdetected = False
-   
         self.yolopoints_file = 'yolov8m-worldv2.pt'
 
     # Function to get class colors
-    def getColours(self,cls_num):
+    def getClassColours(self,cls_num):
         base_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
         color_index = cls_num % len(base_colors)
         increments = [(1, -2, 1), (-2, 1, -1), (1, -1, 2)]
@@ -481,61 +477,10 @@ class robotVision():
         (cls_num // len(base_colors)) % 256 for i in range(3)]
         return tuple(color)
         
-    def find_ball(self,colobj):
-        found = 0
-        ang_tol = 10        # tolerance for rotation angle
-        ang = [90, ang_tol, 180 - ang_tol] # head rotation angles
-        dist = [0, 0, 0]    # measured distances to obstacles at rotation angles
-        dist_min = 30       # min distance to obstacle (cm)
-        d180 = 90           # eq rotation distance for 180 deg turn
-        dturn = 60          # eq rotation distance for smaller than 180 deg turns
-        for n in range(2):
-            if n == 1:
-                if dist[1] > dist[2]:
-                    self._cmd(self._car, do = 'move', where = 'right', at = self.speed)
-                else:
-                    self._cmd(self._car, do = 'move', where = 'left', at = self.speed)
-                #time.sleep(d180/self.speed)
-                self._cmd(self._car, do = 'stop')
-            for i in range(3):
-                self._cmd(self._car, do = 'rotate', at = ang[i])
-                dist[i] = self._cmd(self._car, do = 'measure', what = 'distance')
-                img2,ball, bd, ba_rad, ba_deg = self.find_col_ball(colobj)
-                if ball:
-                    if ((i == 1 and ba_deg < -ang_tol) or
-                        (i == 2 and ba_deg > +ang_tol)):
-                        # Rotate head more precisely to ball angle to measure distances
-                        um_ang = ang[i] - ba_deg
-                        self._cmd(self._car, do = 'rotate', at = um_ang)
-                        d = self._cmd(self._car, do = 'measure', what = 'distance')
-                        img2,ball, bd, ba_rad, ba_deg = self.find_col_ball(colobj)
-                    else:
-                        um_ang = ang[i]
-                        d = dist[i]
-                    if not ball: continue
-                    if d > dist_min:
-                        found = 1
-                        print('found ball: bdist =', round(bd,1), 'dist =', d)
-                        self._cmd(self._car, do = 'rotate', at = 90)
-                        steer_ang = 90 - um_ang + ba_deg
-                        if steer_ang > ang_tol:
-                            self._cmd(self._car, do = 'move', where = 'right', at = self.speed)
-                        elif steer_ang < -ang_tol:
-                            self._cmd(self._car, do = 'move', where = 'left', at = self.speed)
-                        print('steering angle =', steer_ang)
-                        #time.sleep(dturn/speed*abs(steer_ang)/180)
-                        self._cmd(self._car, do = 'stop')
-                        #time.sleep(0.5)
-                        img2,_, bd, ba_rad, ba_deg = self.find_col_ball(colobj)
-                    break
-            if found:
-                break
-        if not found:
-            self._cmd(self._car, do = 'rotate', at = 90)
-
     def find_col_ball(self,colordetect):
         # Filter image by color
         img = self.captureimg()
+        self._origheight, self._origwidth, channels = img.shape
         mask = cv2.medianBlur(img, 5)
         img_hsv = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)
         if colordetect == 'red':
@@ -566,8 +511,7 @@ class robotVision():
             lower = np.array([0, 70, 50], dtype="uint8")
             upper = np.array([10, 255, 255], dtype="uint8")
             print('Color not recognized')  
-        # lower = np.array([50, 70, 60], dtype="uint8") # 50, 70, 60
-        # upper = np.array([90, 255, 255], dtype="uint8") # 90, 200, 230
+ 
         mask = cv2.inRange(img_hsv, lower, upper)
         # Detect contours
         mask = cv2.erode(mask, None, iterations = 2)
@@ -575,7 +519,7 @@ class robotVision():
         cont = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cont = imutils.grab_contours(cont)
         # Evaluate all contours
-        yh = 491        # y-coordinate of line of horizon, contours above it are ignored
+        yh = self._origheight - 100        # y-coordinate of line of horizon, objects above it are ignored
         ball = 0        # flag indicating a presence of a ball of the given color
         dist = None     # distance to the ball
         ang_rad = 0     # angle to the ball in rad
@@ -588,7 +532,7 @@ class robotVision():
                 # Find center and area of contour
                 M = cv2.moments(cont[n])
                 _xc = int(M['m10']/M['m00'])
-                _yc = 600 - int(M['m01']/M['m00'])  # make y = 0 at image bottom
+                _yc = self._origheight - int(M['m01']/M['m00'])  # make y = 0 at image bottom
                 area = M['m00']
                 # Find ball with largest area below line of horizon
                 if _yc < yh and area > area_max:
@@ -618,31 +562,6 @@ class robotVision():
         # cv2.imshow('Camera', img)
         # cv2.waitKey(1)
         return img,ball, dist, ang_rad, ang_deg,dx
-    
-    #%% Track the ball
-    def track_ball(self,coltrack):
-        img,ball, bd, ba_rad, ba_deg =self.find_col_ball(coltrack)
-
-        if ball:
-            # Calculate left and right wheel speeds to reach the ball
-            r = bd/(2*np.sin(ba_rad))    # required turning radius
-            if r > 0 and r <= 707:  # turn right
-                s0 = 1.111
-                ra = -17.7
-                rb = 98.4
-            else:    # turn left or go straight
-                s0 = 0.9557  # vl/vr speed ratio to go straight
-                ra = 5.86
-                rb = -55.9
-            speed_ratio = s0*(r - ra)/(r + rb)
-            speed_ratio = max(0, speed_ratio)
-            if r > 0 and r <= 707:  # turn right
-                lspeed = self.speed
-                rspeed = round(self.speed*speed_ratio)
-            else:                   # turn left or go straight
-                lspeed = round(self.speed*speed_ratio)
-                rspeed = self.speed
-            self._cmd(self._car, do = 'set', at = [rspeed, lspeed])
     
     def detectYoloObj(self, frame,objtodetect):
         # Load the model
@@ -676,7 +595,7 @@ class robotVision():
                     print("Found object ",class_name, " with confidence ", box.conf[0])
                     
                     # get the respective colour
-                    colour = self.getColours(cls)
+                    colour = self.getClassColours(cls)
                     # draw the rectangle
                     cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
                     if classes_names[int(box.cls[0])] == objtodetect:
@@ -686,7 +605,7 @@ class robotVision():
                         cv2.circle(frame, (xh, yh), 5, (0, 0, 255), -1)
                         self.objdetected = True
                     # get the respective colour
-                    colour = self.getColours(cls)
+                    colour = self.getClassColours(cls)
 
                         # draw the rectangle
                     cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
