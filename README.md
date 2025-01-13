@@ -2,7 +2,7 @@
 
 Install the requirements in Python scripts folder by running pip install -r requirements.txt in the folder
 
-The library is in teh lib folder. This allows you to control with the tank or teh car (Need to setup the type when you init the library)
+The library is in the lib folder. This allows you to control with the tank or the car (Need to setup the type when you init the library)
 
 Init like this
 
