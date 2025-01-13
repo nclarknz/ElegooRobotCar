@@ -463,12 +463,13 @@ class robottank(ElegooPlatform):
         return self._cmd(do='rotate',what='camera',at=direct)
 
 
-class robotVision(ElegooPlatform):
+class robotVision():
     def __init__(self):
+       
         self._origheight = 0
         self._origwidth = 0
         self.objdetected = False
-        self.robot = ElegooPlatform
+   
         self.yolopoints_file = 'yolov8m-worldv2.pt'
 
     # Function to get class colors
@@ -646,6 +647,7 @@ class robotVision(ElegooPlatform):
     def detectYoloObj(self, frame,objtodetect):
         # Load the model
         #cv2.imwrite('robotcapture2.png', frame)
+        self.objdetected = False
         yolo = YOLO(self.yolopoints_file)
         self._origheight, self._origwidth, channels = frame.shape
         frame = imutils.resize(frame, width=640, height=480)
@@ -671,7 +673,7 @@ class robotVision(ElegooPlatform):
 
                     # get the class name
                     class_name = classes_names[cls]
-                    print("Found object ",class_name, " with confidence % ", box.conf[0])
+                    print("Found object ",class_name, " with confidence ", box.conf[0])
                     
                     # get the respective colour
                     colour = self.getColours(cls)
@@ -693,7 +695,7 @@ class robotVision(ElegooPlatform):
         # cv2.imwrite("robotcaptureyolo.png",frame)
         return frame,listfoundobj
     
-    def sortconf(e):
+    def sortconf(self,e):
         return e.conf[0].item()
 
     def findobjectlocation(self,yolo_result):
