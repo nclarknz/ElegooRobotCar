@@ -59,6 +59,23 @@ class ElegooPlatform:
     def capturestream(self):
         self._cmd_no += 1
         self._urltoopen = 'http://' + self.ip + ':81/stream'
+        vcap = cv2.VideoCapture(self._urltoopen)
+        return vcap
+        # while(True):
+        #     # Capture frame-by-frame
+        #     ret, frame = vcap.read()
+        #     #print cap.isOpened(), ret
+        #     if frame is not None:
+        #         # Display the resulting frame
+        #         cv2.imshow('frame',frame)
+        #         # Press q to close the video windows before it ends if you want
+        #         if cv2.waitKey(22) & 0xFF == ord('q'):
+        #             break
+        #     else:
+        #         print("Frame is None")
+        #         break
+        # vcap.release()
+
 
     def captureimg(self):
         self._cmd_no += 1
@@ -67,7 +84,7 @@ class ElegooPlatform:
         url_response = urlopen(self._urltoopen)
         img_array = np.array(bytearray(url_response.read()), dtype=np.uint8)
         img = cv2.imdecode(img_array, -1)
-        cv2.imwrite("robotcapture.png",img)
+        #cv2.imwrite("robotcapture.png",img)
         try:
             # cv2.imshow('Camera', img)
             # cv2.waitKey(1) & 0xFF == ord('0')
@@ -467,6 +484,8 @@ class robotVision():
         self._origwidth = 0
         self.objdetected = False
         self.yolopoints_file = 'yolov8m-worldv2.pt'
+        self.yoloconfidence = 0.4 # Min confidence level for YOLO to be correct
+        self.area_min = 4000 # Min area of contour in coloured object detection
 
     # Function to get class colors
     def getClassColours(self,cls_num):
@@ -477,14 +496,14 @@ class robotVision():
         (cls_num // len(base_colors)) % 256 for i in range(3)]
         return tuple(color)
         
-    def find_col_ball(self,colordetect):
+    def find_col_obj(self,img,colordetect):
         # Filter image by color
-        img = self.captureimg()
-        self._origheight, self._origwidth, channels = img.shape
+        listfoundobj = []
+        origheight, origwidth, channels = img.shape
         mask = cv2.medianBlur(img, 5)
         img_hsv = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)
         if colordetect == 'red':
-            lower = np.array([0, 70, 50], dtype="uint8")
+            lower = np.array([0, 90, 50], dtype="uint8")
             upper = np.array([10, 255, 255], dtype="uint8")
         elif colordetect == 'green':
             lower = np.array([29, 86, 6], dtype="uint8")
@@ -516,52 +535,45 @@ class robotVision():
         # Detect contours
         mask = cv2.erode(mask, None, iterations = 2)
         mask = cv2.dilate(mask, None, iterations = 2)
+        cv2.imshow('mask',mask)
         cont = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cont = imutils.grab_contours(cont)
         # Evaluate all contours
-        yh = self._origheight - 100        # y-coordinate of line of horizon, objects above it are ignored
+        yh = origheight - 100        # y-coordinate of line of horizon, objects above it are ignored
         ball = 0        # flag indicating a presence of a ball of the given color
         dist = None     # distance to the ball
         ang_rad = 0     # angle to the ball in rad
         ang_deg = 0     # angle to the ball in deg
         area = 0        # area of contour
-        area_max = 20   # contours with area smaller than this will be ignored 
+        #area_max = 3000   # contours with area smaller than this will be ignored 
         ncont = len(cont)
         if ncont > 0:
             for n in range(ncont):
                 # Find center and area of contour
                 M = cv2.moments(cont[n])
                 _xc = int(M['m10']/M['m00'])
-                _yc = self._origheight - int(M['m01']/M['m00'])  # make y = 0 at image bottom
+                _yc = origheight - int(M['m01']/M['m00'])  # make y = 0 at image bottom
+                xc = _xc - int(origwidth/2)    # make x axis go through image center
+                yc = _yc
                 area = M['m00']
-                # Find ball with largest area below line of horizon
-                if _yc < yh and area > area_max:
-                    area_max = area
+                center = (_xc, int(origheight) - _yc)   # need only for plotting
+                if _yc < yh and area > self.area_min:   # Find ball with area above the min that is below line of horizon
                     ball = 1
-                    nc = n
-                    xc = _xc - 400    # make x axis go through image center
-                    yc = _yc
-                    center = (_xc, 600 - _yc)   # need only for plotting
-        # Calculate distance and angle to the ball
-        if ball:
-            cv2.drawContours(img, cont, nc, (0,0,255), 1)    # draw selected contour
-            cv2.circle(img, center, 1, (0,0,255), 2)         # draw center
-            cv2.putText(img, '(' + str(xc) + ', ' + str(yc) + ')', center, 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
-            dy = 4.31*(745.2 + yc)/(yh - yc)    # distance to ball along y
-            if xc < 0: dy = dy*(1 - xc/1848)    # correction factor for negative xc
-            dx = 0.00252*xc*dy                  # distance to ball along x
-            dist = np.sqrt(dx**2 + dy**2)       # distance to ball
-            ang_rad = np.arctan(dx/dy)          # angle to ball in rad
-            ang_deg = round(ang_rad*180/np.pi)  # angle to ball in deg
-            #print('bd =', round(dist), 'ba =', ang_deg)
-        else:
-            print('no ball')
-        cv2.line(img, (400,0), (400,600), (0,0,255), 1)           # center line
-        cv2.line(img, (0,600 - yh), (800,600 - yh), (0,0,255), 1) # line of horizon
-        # cv2.imshow('Camera', img)
-        # cv2.waitKey(1)
-        return img,ball, dist, ang_rad, ang_deg,dx
+                    cv2.drawContours(img, cont, n, (0,0,255), 1)    # draw selected contour
+                    cv2.circle(img, center, 1, (0,0,255), 2)         # draw center
+                    cv2.putText(img, '(' + str(xc) + ', ' + str(yc) + ' - ' + str(area) +')', center, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
+                    # Calculate distance and angle to the ball
+                    dy = 4.31*(745.2 + yc)/(yh - yc)    # distance to ball along y
+                    if xc < 0: dy = dy*(1 - xc/1848)    # correction factor for negative xc
+                    dx = 0.00252*xc*dy                  # distance to ball along x
+                    dist = np.sqrt(dx**2 + dy**2)       # distance to ball
+                    ang_rad = np.arctan(dx/dy)          # angle to ball in rad
+                    ang_deg = round(ang_rad*180/np.pi)  # angle to ball in deg
+                    listobj = [dy,xc,yc,area,ang_deg]
+                    listfoundobj.append(listobj)
+        cv2.line(img, (int(origwidth/2),0), (int(origwidth/2),origheight), (0,0,255), 1)           # center line
+        cv2.line(img, (0,origwidth - yh), (origwidth,origwidth - yh), (0,0,255), 1) # line of horizon
+        return img,listfoundobj
     
     def detectYoloObj(self, frame,objtodetect):
         # Load the model
@@ -580,7 +592,7 @@ class robotVision():
             # iterate over each box
             for box in result.boxes:
                 # check if confidence is greater than 40 percent
-                if box.conf[0] > 0.4:
+                if box.conf[0] > self.yoloconfidence:
                     # get coordinates
                     [x1, y1, x2, y2] = box.xyxy[0]
                     # convert to int
